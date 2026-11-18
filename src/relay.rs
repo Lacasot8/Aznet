@@ -95,6 +95,62 @@ pub fn tune_tcp_stream(stream: &TcpStream) {
     }
 }
 
+/// Tuning conservador para HCR. O protocolo abre canais curtos e independentes
+/// de upload/download; NOTSENT_LOWAT e BBR podem transformar backpressure em
+/// encerramentos prematuros em algumas redes móveis, então não são aplicados.
+pub fn tune_hcr_stream(stream: &TcpStream) {
+    let _ = stream.set_nodelay(true);
+    #[cfg(target_os = "linux")]
+    unsafe {
+        let fd = stream.as_raw_fd();
+        let receive_size = std::mem::size_of_val(&SOCKET_RECEIVE_BUFFER_SIZE) as libc::socklen_t;
+        let _ = libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_RCVBUF,
+            &SOCKET_RECEIVE_BUFFER_SIZE as *const _ as *const libc::c_void,
+            receive_size,
+        );
+        let send_size = std::mem::size_of_val(&SOCKET_SEND_BUFFER_SIZE) as libc::socklen_t;
+        let _ = libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_SNDBUF,
+            &SOCKET_SEND_BUFFER_SIZE as *const _ as *const libc::c_void,
+            send_size,
+        );
+        let keepalive: libc::c_int = 1;
+        let _ = libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_KEEPALIVE,
+            &keepalive as *const _ as *const libc::c_void,
+            std::mem::size_of_val(&keepalive) as libc::socklen_t,
+        );
+        let _ = libc::setsockopt(
+            fd,
+            libc::IPPROTO_TCP,
+            libc::TCP_KEEPIDLE,
+            &TCP_KEEPIDLE_SECS as *const _ as *const libc::c_void,
+            std::mem::size_of_val(&TCP_KEEPIDLE_SECS) as libc::socklen_t,
+        );
+        let _ = libc::setsockopt(
+            fd,
+            libc::IPPROTO_TCP,
+            libc::TCP_KEEPINTVL,
+            &TCP_KEEPINTVL_SECS as *const _ as *const libc::c_void,
+            std::mem::size_of_val(&TCP_KEEPINTVL_SECS) as libc::socklen_t,
+        );
+        let _ = libc::setsockopt(
+            fd,
+            libc::IPPROTO_TCP,
+            libc::TCP_KEEPCNT,
+            &TCP_KEEPCNT as *const _ as *const libc::c_void,
+            std::mem::size_of_val(&TCP_KEEPCNT) as libc::socklen_t,
+        );
+    }
+}
+
 pub async fn copy_bidirectional<A, B>(a: &mut A, b: &mut B) -> io::Result<(u64, u64)>
 where
     A: AsyncRead + AsyncWrite + Unpin,

@@ -56,9 +56,9 @@ pub async fn handle_tls(socket: TcpStream) -> Result<()> {
 
 /// Encaminha o fluxo HCR intacto ao servidor oficial HCR em transporte plain.
 pub async fn handle_hcr(mut socket: TcpStream) -> Result<()> {
-    crate::relay::tune_tcp_stream(&socket);
+    crate::relay::tune_hcr_stream(&socket);
     let mut hcr = connect_hcr_backend().await?;
-    crate::relay::tune_tcp_stream(&hcr);
+    crate::relay::tune_hcr_stream(&hcr);
     info!("HCR multiprotocolo -> servidor oficial {HCR_BACKEND_ADDR}");
     crate::relay::copy_bidirectional(&mut socket, &mut hcr).await?;
     Ok(())
