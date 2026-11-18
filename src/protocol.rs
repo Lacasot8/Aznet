@@ -7,9 +7,10 @@ const MAX_PEEK: usize = 16 * 1024;
 const DETECT_TIMEOUT: Duration = Duration::from_millis(800);
 const HCR_HEADER_SIZE: usize = 62;
 const HCR_MAX_PAYLOAD: u32 = 1_048_576;
-// Redes móveis podem atrasar o primeiro byte do canal HCR. A espera só é
-// aplicada quando o byte inicial é um opcode HCR (1..6); SSH/HTTP continuam
-// sendo encaminhados imediatamente pelo fluxo normal.
+// Redes móveis podem atrasar o primeiro byte do canal HCR, especialmente na
+// porta 80. A espera só é aplicada quando a conexão ainda está silenciosa e o
+// byte inicial é um opcode HCR (1..6); SSH/HTTP continuam sendo encaminhados
+// imediatamente pelo fluxo normal da opção 1.
 const HCR_FIRST_BYTE_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
