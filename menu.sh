@@ -14,9 +14,9 @@ LANGUAGE_FILE="${BYPASS_DIR}/language"
 HCR_PORT="8880"
 HCR_SERVICE="hcr-8880.service"
 HCR_SSH_TARGET="127.0.0.1:22"
-# O hcr-server 0.1.29 aceita até 30s. O cliente HCR do APK usa keepalive
-# de 20s; deixar o polling em 30s evita a corrida que interrompe uploads.
-HCR_DOWNLOAD_POLL_TIMEOUT="30s"
+# O cliente HCR usa keepalive periódico; uma margem maior evita que o
+# download-poll expire durante pausas de rádio ou tráfego móvel irregular.
+HCR_DOWNLOAD_POLL_TIMEOUT="90s"
 # 16 KiB é o frame mais compatível com clientes HCR e redes móveis.
 HCR_DOWNLOAD_FRAME="16384"
 HCR_MAX_CONNECTIONS="4096"
