@@ -118,15 +118,12 @@ async fn handle_client_protocol(
     multiprotocol_enabled: bool,
     hcr_enabled: bool,
 ) -> Result<(), Error> {
-    // Em uma porta marcada somente com HCR, não tente classificar cada nova
-    // conexão. O cliente HCR abre conexões de upload/download adicionais e o
-    // primeiro frame pode chegar fragmentado ou depois do atraso de rádio.
-    // Classificar uma dessas conexões como HTTP faz o cliente receber EOF e
-    // perder tráfego assim que YouTube/Speedtest começam a usar o túnel.
-    // O dispatcher continua sendo o único caminho de classificação quando o
-    // multiprotocolo estiver explicitamente ligado.
-    if hcr_enabled && !multiprotocol_enabled {
-        println!("[HCR] Porta dedicada; encaminhando conexão ao servidor oficial");
+    // HCR e o fluxo normal da opção 1 podem coexistir sem ativar o dispatcher.
+    // Só conexões que apresentam um frame HCR completo seguem ao backend HCR;
+    // SSH_DIRECT, SSH_PROXY e HTTP continuam no caminho normal da porta.
+    // Isso evita o erro 520 quando o multiprotocolo está OFF.
+    if hcr_enabled && !multiprotocol_enabled && protocol::detect_hcr_only(&client_stream).await? {
+        println!("[HCR] Frame detectado; encaminhando ao servidor oficial");
         return tls::handle_hcr(client_stream)
             .await
             .map_err(|e| Error::new(ErrorKind::Other, format!("HCR: {e}")));
