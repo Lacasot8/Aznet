@@ -6,7 +6,7 @@ use tokio::time::{sleep, timeout, Duration};
 const MAX_PEEK: usize = 16 * 1024;
 const DETECT_TIMEOUT: Duration = Duration::from_millis(800);
 const HCR_HEADER_SIZE: usize = 62;
-const HCR_MAX_PAYLOAD: u32 = 262_144;
+const HCR_MAX_PAYLOAD: u32 = 1_048_576;
 const HCR_FIRST_BYTE_TIMEOUT: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -377,6 +377,8 @@ mod tests {
         hcr[0] = 1;
         assert_eq!(detect_protocol(&hcr[..2]), None);
 
+        hcr[58..62].copy_from_slice(&HCR_MAX_PAYLOAD.to_be_bytes());
+        assert_eq!(detect_protocol(&hcr), Some(Protocol::Hcr));
         hcr[58..62].copy_from_slice(&(HCR_MAX_PAYLOAD + 1).to_be_bytes());
         assert_eq!(detect_protocol(&hcr), None);
     }
