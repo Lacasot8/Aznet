@@ -119,14 +119,21 @@ async fn handle_client_protocol(
     hcr_enabled: bool,
 ) -> Result<(), Error> {
     // HCR e o fluxo normal da opção 1 podem coexistir sem ativar o dispatcher.
-    // Só conexões que apresentam um frame HCR completo seguem ao backend HCR;
-    // SSH_DIRECT, SSH_PROXY e HTTP continuam no caminho normal da porta.
-    // Isso evita o erro 520 quando o multiprotocolo está OFF.
-    if hcr_enabled && !multiprotocol_enabled && protocol::detect_hcr_only(&client_stream).await? {
-        println!("[HCR] Frame detectado; encaminhando ao servidor oficial");
-        return tls::handle_hcr(client_stream)
-            .await
-            .map_err(|e| Error::new(ErrorKind::Other, format!("HCR: {e}")));
+    // O cliente HCR usado no aplicativo espera o HTTP 101 antes de enviar o
+    // primeiro frame. Envie esse handshake primeiro, detecte HCR sem consumir
+    // bytes e, se não for HCR, continue no fluxo original da opção 1.
+    if hcr_enabled && !multiprotocol_enabled {
+        let mut client_stream = client_stream;
+        client_stream
+            .write_all(option_one_initial_response())
+            .await?;
+        if protocol::detect_hcr_only(&client_stream).await? {
+            println!("[HCR] Frame detectado após o handshake da opção 1; encaminhando ao servidor oficial");
+            return tls::handle_hcr(client_stream)
+                .await
+                .map_err(|e| Error::new(ErrorKind::Other, format!("HCR: {e}")));
+        }
+        return handle_client_after_initial(client_stream, status, ssh_only).await;
     }
 
     if multiprotocol_enabled {
@@ -221,13 +228,23 @@ async fn handle_client(
     ssh_only: bool,
 ) -> Result<(), Error> {
     // Opção 1: fluxo compatível com o WZPRO, sem o segundo 101 do
-    // multiprotocolo. O caminho HCR chega aqui somente quando está desligado.
+    // multiprotocolo.
     relay::tune_tcp_stream(&client_stream);
     client_stream.set_nodelay(true)?;
     client_stream
         .write_all(option_one_initial_response())
         .await?;
 
+    handle_client_after_initial(client_stream, status, ssh_only).await
+}
+
+async fn handle_client_after_initial(
+    mut client_stream: TcpStream,
+    status: &str,
+    ssh_only: bool,
+) -> Result<(), Error> {
+    // O handshake inicial já foi enviado pela opção 1 ou pelo caminho HCR
+    // combinado; não o envie novamente.
     let mut buffer = [0u8; 1024];
     let _ = client_stream.read(&mut buffer).await?;
     client_stream
