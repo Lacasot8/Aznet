@@ -23,9 +23,9 @@ HCR_MAX_CONNECTIONS="4096"
 HCR_MAX_SESSIONS="128"
 HCR_MAX_SESSIONS_PER_IP="64"
 HCR_BINARY_CANDIDATES=("${BYPASS_DIR}/hcr-server" "/opt/hcr-server/hcr-server" "/usr/local/bin/hcr-server" "/usr/bin/hcr-server")
-# Fonte pública do binário oficial hcr-server (Linux amd64). Pode ser trocada
-# exportando HCR_SOURCE_URL antes de abrir o menu.
-HCR_SOURCE_URL="${HCR_SOURCE_URL:-https://raw.githubusercontent.com/decodezsniff-art/hcr-server/main/hcr-server}"
+# O pacote HCR validado é servido pelo próprio repositório para manter uma
+# origem HTTPS estável; HCR_SOURCE_URL ainda pode substituir essa origem.
+HCR_SOURCE_URL="${HCR_SOURCE_URL:-https://raw.githubusercontent.com/Lacasot8/Aznet/main/assets/hcr-server-linux-amd64.tar.gz}"
 
 # Cores
 RED='\033[0;31m'
@@ -481,6 +481,7 @@ hcr_binary_version() {
 
 hcr_install_binary() {
     local DEST="${BYPASS_DIR}/hcr-server" TMP="" MAGIC="" SOURCE="${HCR_SOURCE_URL}"
+    local PAYLOAD="" EXTRACT_DIR="" MEMBER=""
 
     if ! hcr_arch_ok; then
         echo -e "${RED}O hcr-server oficial só é publicado para Linux amd64. Arquitetura atual: $(uname -m).${NC}" >&2
@@ -507,28 +508,53 @@ hcr_install_binary() {
         return 1
     fi
 
-    # Valida ELF64 x86-64 (e_ident + e_machine = 0x3e) sem depender do pacote `file`.
+    # Aceita o ELF legado e o novo hcr-server-linux-amd64.tar.gz.
+    # Os nomes do tar são verificados antes da extração para impedir traversal.
     MAGIC=$(head -c 20 "$TMP" 2>/dev/null | od -An -tx1 | tr -d ' \n')
-    if [[ "$MAGIC" != 7f454c46* || "${MAGIC:36:4}" != "3e00" ]]; then
+    if [[ "$MAGIC" == 7f454c46* && "${MAGIC:36:4}" == "3e00" ]]; then
+        PAYLOAD="$TMP"
+    elif [[ "$MAGIC" == 1f8b* ]]; then
+        EXTRACT_DIR=$(mktemp -d /tmp/aznet-hcr-extract.XXXXXX) || {
+            rm -f -- "$TMP"
+            echo -e "${RED}Não foi possível criar diretório temporário para o HCR.${NC}" >&2
+            return 1
+        }
+        if tar -tzf "$TMP" | grep -Eq '(^/|(^|/)\.\./|(^|/)\.\.$)' || ! tar -xzf "$TMP" -C "$EXTRACT_DIR"; then
+            rm -rf -- "$EXTRACT_DIR" "$TMP"
+            echo -e "${RED}O pacote HCR é inválido ou contém caminhos inseguros.${NC}" >&2
+            return 1
+        fi
+        while IFS= read -r -d '' MEMBER; do
+            MAGIC=$(head -c 20 "$MEMBER" 2>/dev/null | od -An -tx1 | tr -d ' \n')
+            if [[ "$MAGIC" == 7f454c46* && "${MAGIC:36:4}" == "3e00" ]]; then
+                PAYLOAD="$MEMBER"
+                break
+            fi
+        done < <(find "$EXTRACT_DIR" -type f -name 'hcr-server*' -print0)
+        if [[ -z "$PAYLOAD" ]]; then
+            rm -rf -- "$EXTRACT_DIR" "$TMP"
+            echo -e "${RED}O pacote não contém um hcr-server ELF64 Linux amd64 válido.${NC}" >&2
+            return 1
+        fi
+    else
         rm -f -- "$TMP"
-        echo -e "${RED}O arquivo baixado não é um binário ELF Linux amd64 válido.${NC}" >&2
+        echo -e "${RED}O download não é um ELF amd64 nem um pacote tar.gz válido.${NC}" >&2
         return 1
     fi
-
-    if ! chmod 755 "$TMP"; then
-        rm -f -- "$TMP"
+    if ! chmod 755 "$PAYLOAD"; then
+        rm -rf -- "$EXTRACT_DIR" "$TMP"
         echo -e "${RED}Não foi possível preparar o binário baixado.${NC}" >&2
         return 1
     fi
     if [[ -f "$DEST" ]]; then
         cp -a -- "$DEST" "${DEST}.bak.$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
     fi
-    if ! install -m 755 "$TMP" "$DEST"; then
-        rm -f -- "$TMP"
+    if ! install -m 755 "$PAYLOAD" "$DEST"; then
+        rm -rf -- "$EXTRACT_DIR" "$TMP"
         echo -e "${RED}Falha ao instalar ${DEST}.${NC}" >&2
         return 1
     fi
-    rm -f -- "$TMP"
+    rm -rf -- "$EXTRACT_DIR" "$TMP"
     echo -e "${GREEN}hcr-server instalado em ${DEST}${NC}" >&2
     echo "Versão: $(hcr_binary_version "$DEST")" >&2
     return 0

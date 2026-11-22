@@ -1,5 +1,10 @@
 # Mpro - Changelog
 
+## Correção do instalador HCR
+
+- O instalador agora aceita o ELF amd64 legado e o pacote `hcr-server-linux-amd64.tar.gz`.
+- O pacote validado é servido pelo próprio repositório em `assets/hcr-server-linux-amd64.tar.gz`; `HCR_SOURCE_URL` continua disponível para mirrors alternativos.
+
 ## Próxima versão - HCR na opção 7/H
 
 ### Corrigido
